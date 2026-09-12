@@ -13,9 +13,11 @@ On Windows PowerShell: `Copy-Item .env.example .env`
 | Variable | Default | Used by |
 |---|---|---|
 | `OPENAI_API_KEY` | (required) | desk |
-| `OPENAI_MODEL` | `gpt-4o` | desk |
+| `OPENAI_MODEL` | `gpt-4o` in code; `.env.example` sets `gpt-4o-mini` | desk |
 | `OPS_BASE_URL` | `http://127.0.0.1:8642` | desk (Compose overrides this to `http://ops:8642`) |
 | `OPS_API_KEY` | `aerlink-ops-local-key` | desk and ops |
+
+Never commit `.env`. `.env.example` is the file that belongs in git.
 
 ---
 
@@ -101,10 +103,16 @@ python -m pytest tests
 
 ### Reset ops between runs
 
-Writes (rebook, payment, escalation) persist on the ops process until you reset:
+Writes (rebook, payment, escalation) persist on the ops process until you reset. Header is `X-Ops-Key` (see `env/API.md`):
 
 ```bash
-curl -X POST http://127.0.0.1:8642/_reset -H "X-API-Key: aerlink-ops-local-key"
+curl -X POST http://127.0.0.1:8642/_reset -H "X-Ops-Key: aerlink-ops-local-key"
+```
+
+PowerShell:
+
+```powershell
+Invoke-RestMethod -Method POST http://127.0.0.1:8642/_reset -Headers @{ "X-Ops-Key" = "aerlink-ops-local-key" }
 ```
 
 ---
@@ -119,17 +127,13 @@ The Compose file has three services:
 | `desk` | One-shot CLI (`python -m desk …`) | `docker compose run … desk …` |
 | `test` | `pytest` over all twelve case fixtures | `docker compose --profile test run --rm test` |
 
-`desk` is on the `cli` profile so **`docker compose up` no longer tries to start it**. Previously that failed with:
+`desk` is on the `cli` profile so **`docker compose up` starts ops only**. The desk is not a daemon.
 
-```text
-__main__.py: error: the following arguments are required: command
-```
-
-because Compose launched `python -m desk` with no subcommand. The desk is not a daemon; do not expect it to stay up.
+Copy `.env.example` to `.env` before `docker compose run … desk …` (Compose reads that file for the OpenAI key).
 
 ### Start ops
 
-From the repo root (where `docker-compose.yml` lives), with `.env` present:
+From the repo root (where `docker-compose.yml` lives):
 
 ```bash
 docker compose up
@@ -177,21 +181,13 @@ Records land in `./output` on the host (`./output` is bind-mounted).
 
 ### Tests inside Docker
 
-No OpenAI spend. Covers identity, injection, thread latest-wins, multi-pax, and the other fixtures:
+No OpenAI spend:
 
 ```bash
 docker compose --profile test run --rm test
 ```
 
-Equivalent, using the desk image entrypoint override:
-
-```bash
-docker compose run --rm --entrypoint python desk -m pytest tests
-```
-
 ### Ops-only image (from `env/`)
-
-If you only want the API, without the desk image:
 
 ```bash
 cd env
@@ -227,7 +223,7 @@ The agent proposes actions. A deterministic write gate is the only code that POS
 | All fixtures | `python -m desk run-all` or `docker compose run --rm desk run-all` |
 | OpenAI tokens / estimated $ | `python -m desk usage` |
 | Check all 12 cases without spending | `python -m pytest tests` or `docker compose --profile test run --rm test` |
-| Replay cleanly | `POST /_reset` on ops, then run again |
+| Replay cleanly | `POST /_reset` with `X-Ops-Key`, then run again |
 
 Do not point the key at a runaway loop. `run-all` calls OpenAI once per case. Develop on one or two cases first.
 
@@ -240,7 +236,7 @@ Do not point the key at a runaway loop. `run-all` calls OpenAI once per case. De
 | `the following arguments are required: command` on `docker compose up` | Old compose started the desk CLI with no subcommand | Pull this compose file: `up` starts ops only; use `docker compose run --rm desk run cases/case-01` |
 | Exit 2: `OPENAI_API_KEY is not set` | Missing `.env` or empty key | Copy `.env.example` to `.env` and set the key. Compose reads `.env` from the repo root |
 | Exit 3: operations API is not reachable | Ops not running, or desk pointing at the wrong URL | Start ops; locally `OPS_BASE_URL=http://127.0.0.1:8642`; in Compose it is already `http://ops:8642` |
-| `env_file: .env` compose error | `.env` does not exist | `cp .env.example .env` |
-| Case already rebooked / paid | Ops state persisted from a previous run | `POST /_reset`, then re-run |
+| `env_file: .env` compose error | `.env` does not exist | `cp .env.example .env` (or `Copy-Item .env.example .env`) |
+| Case already rebooked / paid | Ops state persisted from a previous run | `POST /_reset` with `X-Ops-Key`, then re-run |
 | Port 8642 in use | Another ops process | Stop the other process, or change `OPS_PORT` |
 | `docker compose run` hangs on desk | Ops healthcheck never passed | `docker compose logs ops` |

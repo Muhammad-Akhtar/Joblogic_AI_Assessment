@@ -85,21 +85,30 @@ like.
 
 **Local and Docker setup:** see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 
+After clone:
+
 ```bash
+cp .env.example .env          # Windows: Copy-Item .env.example .env
+# paste OPENAI_API_KEY into .env
 python -m venv .venv
-.venv\Scripts\activate          # Unix: source .venv/bin/activate
+.venv\Scripts\activate        # Unix: source .venv/bin/activate
 pip install -r requirements.txt
-python env/ops_server.py        # leave running
+python env/ops_server.py      # leave running in this terminal
+```
+
+In a second terminal, with the venv active:
+
+```bash
 python -m desk run cases/case-01
 python -m desk run path/to/inbound.txt   # unseen case
 python -m desk run-all
 python -m desk usage
-python -m pytest tests                       # all 12 fixtures, no OpenAI spend
+python -m pytest tests                   # all 12 fixtures, no OpenAI spend
 ```
 
 Writes a `CaseRecord` to `output/<case_id>.json`. Irreversible ops writes go through a
 deterministic gate; the model can only propose. See `desk/LIMITATIONS.md` for what this
-slice does not do. `OPENAI_MODEL` defaults to `gpt-4o`.
+slice does not do. Code default for `OPENAI_MODEL` is `gpt-4o`; `.env.example` sets `gpt-4o-mini`.
 
 Docker — `docker compose up` starts **ops only**. The desk is a one-shot CLI:
 
