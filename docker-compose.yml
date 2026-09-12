@@ -1,0 +1,47 @@
+# Long-running:  docker compose up
+#   Starts the operations API only. The desk is a one-shot CLI, not a server.
+# Work a case:   docker compose run --rm desk run cases/case-01
+# Full guide:    DEPLOYMENT.md
+services:
+  ops:
+    build: ./env
+    ports:
+      - "8642:8642"
+    environment:
+      OPS_HOST: 0.0.0.0
+      OPS_PORT: "8642"
+      OPS_API_KEY: "${OPS_API_KEY:-aerlink-ops-local-key}"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8642/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  desk:
+    build: .
+    profiles: ["cli"]
+    env_file:
+      - .env
+    environment:
+      OPS_BASE_URL: http://ops:8642
+    depends_on:
+      ops:
+        condition: service_healthy
+    volumes:
+      - ./cases:/app/cases
+      - ./output:/app/output
+    # Replaced by `docker compose run … desk <command>`. Safe no-op if the
+    # profile is enabled without a command (avoids argparse crashing `up`).
+    command: ["--help"]
+
+  test:
+    build: .
+    profiles: ["test"]
+    working_dir: /app
+    volumes:
+      - ./desk:/app/desk
+      - ./tests:/app/tests
+      - ./cases:/app/cases
+      - ./env/data:/app/env/data
+    entrypoint: ["python", "-m", "pytest"]
+    command: ["tests", "-q"]
